@@ -5,6 +5,7 @@ import copy
 import json
 from random import choice, shuffle
 from math import log, sqrt
+import string
 
 
 from PyQt4.QtCore import *
@@ -325,10 +326,16 @@ class Board(QWidget):
                     win = "和局"
                 game_over_info = "游戏结束\r\n" + win + "\r\n"
                 QMessageBox.question(self,'警告',game_over_info,QMessageBox.Yes)
+                ai.writeStates()
         else:
             #不能下子，弹出提醒
             QMessageBox.question(self,'警告','这个地方不能下子哟哟哟',QMessageBox.Yes)
+            
             print("不能下子",game_othello.who,x,y)
+            if(game_othello.who == "0"):
+                move = ai.get_action()
+                if move[0] != -1:
+                    self.placePiece(move[0],move[1])
 
     def placePieceImage(self, x, y, image):
         #下子，如果该标签存在，则替换图片，不存在，则新建
@@ -356,18 +363,59 @@ class MCTS(object):
         self.play_turn = play_turn
         self.player_cur = play_turn[0]
         self.max_actions = max_actions
-        self.calculation_time = float(2)
+        self.calculation_time = float(1)
         self.avaliable = game_othello.availablePositions("0")
         
         self.player = play_turn[0]
-        self.confident = 1.96
+        self.confident = 1.414
         self.max_depth = 1
+        self.plays = {}
+        self.wins = {}
+        self.readStates()
+        self.writeStates()
     
+    def writeStates(self):
+        try:
+            states = open("states.txt","w")
+            wins = open("wins.txt","w")
+            for key,count in self.plays.items():
+                temp = (key[0],key[1],count)
+                states.write("%s,%s,%d"%(key[0],key[1],count))
+            for key,count in self.wins.items():
+                wins.write("%s,%s,%d"%(key[0],key[1],count))
+            states.close()
+            wins.close()
+        except IOError:
+            pass
+        
+    
+    def readStates(self):
+        try:
+            states = open('states.txt')
+            wins = open('wins.txt')
+            for each_line in states:
+                try:
+                    
+                    player,state,count = each_line.split(",")
+                    value = int(count)
+                    self.plays[(player,state)] = value
+                except ValueError:
+                    pass
+            for each_line_ in wins:
+                try:
+                    player,state,count=each_line_.split(",")
+                    value = int(count)
+                    self.wins[(player,state)] = value
+                except ValueError:
+                    pass
+        except IOError:
+            pass
+        states.close()
+        wins.close()
     def get_action(self):
         if len(self.othello.availablePositions(self.player)) == 1:
             return self.othello.availablePositions(self.player)[0]
-        self.plays = {}
-        self.wins = {}
+        
         simulations = 0
         begin = time.time()
         self.othello = copy.deepcopy(game_othello)
@@ -375,7 +423,7 @@ class MCTS(object):
         i = 0
         if len(self.avaliable)==1:
             return self.avaliable.pop()
-        while i < 10:
+        while time.time() - begin < self.calculation_time:
             self.run_simulation()
             simulations += 1
             i += 1
@@ -422,7 +470,7 @@ class MCTS(object):
                     temp_othello.exchange()
                     tmp_key = (temp_othello.get_cur_player(),temp_othello.get_hashed_state())
                     if self.plays.get(tmp_key):
-                        temp_val = (2.0 * self.wins[tmp_key]/self.plays[tmp_key]) + self.confident * sqrt(log_total/self.plays[tmp_key])
+                        temp_val = ( self.wins[tmp_key]/self.plays[tmp_key]) + self.confident * sqrt(2*log_total/self.plays[tmp_key])
                     else:
                         temp_val = self.confident*sqrt(log_total)
                     del temp_othello
